@@ -316,4 +316,19 @@ if [ "$#" -gt 0 ]; then
             echo "  $0 stop           - 停止 Snell 服务"
             echo "  $0 restart        - 重启 Snell 服务"
             echo "  $0 status         - 查看运行状态"
-            echo "  $0 config|info    - 查看节点
+            echo "  $0 config|info    - 查看节点配置"
+            echo "  $0 log            - 实时查看日志"
+            echo "  $0 uninstall      - 卸载 Snell"
+            echo "  $0 help           - 显示此帮助信息"
+            echo "不带任何参数运行 '$0' 将进入交互式菜单。"
+            ;;
+    esac
+    exit 0
+fi
+
+# 如果没有参数，进入交互式菜单模式
+if check_installation; then
+    show_management_menu
+else
+    show_initial_menu
+fi
