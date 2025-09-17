@@ -1,4 +1,4 @@
-# Snell-server (serv00专用版）
+# Snell-server (serv00专用版V3版本 ）V4和v5不能使用
 在 Serv00 平台，您需要先手动获取一个端口。
 请按照以下步骤操作：
 1. 在浏览器中打开并登录您的 Serv00 控制面板。
