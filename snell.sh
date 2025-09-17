@@ -1,11 +1,11 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (V16 - 直接显示配置文件)
+# Snell Server 管理脚本 (V17 - 带快捷命令)
 #
 # 更新日志:
-# - 根据用户建议，将“查看节点信息”功能修改为直接使用 cat 命令
-#   显示配置文件的原始内容，确保信息显示的绝对可靠。
+# - 增加快捷命令功能，可通过 "snell.sh [命令]" 方式直接操作。
+# - 增加 "log" 命令，用于实时查看日志。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -62,7 +62,7 @@ stop_snell() {
     fi
 }
 
-# 显示当前配置 (根据您的建议重写)
+# 显示当前配置
 display_config() {
     if ! [ -r "$SNELL_CONFIG" ]; then
         print_error "错误：配置文件不存在或无法读取于 $SNELL_CONFIG"
@@ -73,7 +73,6 @@ display_config() {
     print_info "以下是您的 Snell 配置文件 ($SNELL_CONFIG) 的原始内容："
     echo
     echo "=================================================="
-    # 直接使用 cat 命令显示文件内容
     cat "$SNELL_CONFIG"
     echo "=================================================="
     echo
@@ -118,7 +117,6 @@ run_installation() {
 
     PSK=$(openssl rand -base64 24)
     mkdir -p "$SNELL_DIR/bin" "$SNELL_DIR/etc"
-    # 注意这里写入文件的格式，确保没有多余空格
     echo "[snell-server]" > "$SNELL_CONFIG"
     echo "listen = 0.0.0.0:$LISTEN_PORT" >> "$SNELL_CONFIG"
     echo "psk = $PSK" >> "$SNELL_CONFIG"
@@ -195,7 +193,7 @@ show_management_menu() {
         echo "  3. 重启 Snell 服务"
         echo "  4. 修改配置 (端口 / PSK)"
         echo "  5. 设置/更新开机自启"
-        echo "  6. 查看节点信息 (直接显示配置文件)"
+        echo "  6. 查看节点信息"
         echo "  7. 卸载 Snell"
         echo "  q. 退出脚本"
         echo
@@ -240,12 +238,65 @@ show_initial_menu() {
     esac
 }
 
-# --- 脚本主入口 ---
+# --- 脚本主入口 (全新重写) ---
+
+# 检查依赖
 if ! command -v curl &> /dev/null || ! command -v openssl &> /dev/null || ! command -v awk &> /dev/null; then
     print_error "错误：本脚本需要 'curl', 'openssl' 和 'awk'，请先确保它们已安装。"
     exit 1
 fi
 
+# 检查是否提供了快捷命令参数
+if [ "$#" -gt 0 ]; then
+    # 如果有参数，进入快捷命令模式
+    case "$1" in
+        start)
+            start_snell
+            ;;
+        stop)
+            stop_snell
+            ;;
+        restart)
+            print_info "正在执行重启操作..."
+            stop_snell
+            start_snell
+            check_running_status
+            ;;
+        status)
+            check_running_status
+            ;;
+        config|info)
+            display_config
+            ;;
+        log)
+            if [ -f "$SNELL_LOG_FILE" ]; then
+                print_info "正在实时显示日志 (按 Ctrl+C 退出)..."
+                tail -f "$SNELL_LOG_FILE"
+            else
+                print_error "日志文件不存在: $SNELL_LOG_FILE"
+            fi
+            ;;
+        uninstall)
+            run_uninstall
+            ;;
+        help|*)
+            # 默认或 'help' 参数显示帮助信息
+            echo "Snell Server 管理脚本快捷命令用法:"
+            echo "  $0 start          - 启动 Snell 服务"
+            echo "  $0 stop           - 停止 Snell 服务"
+            echo "  $0 restart        - 重启 Snell 服务"
+            echo "  $0 status         - 查看运行状态"
+            echo "  $0 config|info    - 查看节点配置"
+            echo "  $0 log            - 实时查看日志"
+            echo "  $0 uninstall      - 卸载 Snell"
+            echo "  $0 help           - 显示此帮助信息"
+            echo "不带任何参数运行 '$0' 将进入交互式菜单。"
+            ;;
+    esac
+    exit 0 # 快捷命令执行后退出
+fi
+
+# 如果没有参数，进入交互式菜单模式
 if check_installation; then
     show_management_menu
 else
