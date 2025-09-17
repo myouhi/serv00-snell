@@ -1,102 +1,18 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (V18 - 全自动快捷命令版)
+# Snell Server 管理脚本 (V16 - 直接显示配置文件)
 #
 # 更新日志:
-# - 安装时，自动创建 `snell` 快捷命令。
-# - 脚本运行时，会自动将自身保存到本地，以便创建快捷方式。
+# - 根据用户建议，将“查看节点信息”功能修改为直接使用 cat 命令
+#   显示配置文件的原始内容，确保信息显示的绝对可靠。
 #================================================================
 
 # --- 全局变量定义 ---
-SCRIPT_DIR="$HOME/snell"
-SCRIPT_PATH="$SCRIPT_DIR/snell.sh"
-SNELL_EXECUTABLE="$SCRIPT_DIR/bin/snell-server"
-SNELL_CONFIG="$SCRIPT_DIR/etc/snell-server.conf"
-SNELL_LOG_FILE="$SCRIPT_DIR/snell.log"
-DOWNLOAD_URL="https://raw.githubusercontent.com/myouhi/serv00-snell/master/snell-server"
-
-# --- 基础函数 ---
-print_info() { echo -e "\033[32m[信息]\033[0m $1"; }
-print_warning() { echo -e "\033[33m[警告]\033[0m $1"; }
-print_error() { echo -e "\033[31m[错误]\033[0m $1"; }
-
-# 检查 Snell 是否已安装
-check_installation() {
-    [ -f "$SNELL_EXECUTABLE" ]
-}
-
-# --- 核心功能函数 ---
-
-# (此处省略 check_running_status, start_snell, stop_snell, display_config 等函数)
-# (它们的实现与之前版本完全相同)
-
-# 自动设置快捷命令
-setup_shortcut() {
-    print_info "正在为您设置 'snell' 快捷命令..."
-    local user_bin_dir="$HOME/bin"
-    mkdir -p "$user_bin_dir"
-
-    # 创建软链接，-f 参数表示如果已存在则强制覆盖
-    ln -sf "$SCRIPT_PATH" "$user_bin_dir/snell"
-    
-    # 检查并添加 PATH 配置到 .bashrc
-    local profile_file="$HOME/.bashrc"
-    local path_config='export PATH="$HOME/bin:$PATH"'
-    
-    if ! grep -qF "$path_config" "$profile_file" 2>/dev/null; then
-        print_info "正在将 '$user_bin_dir' 添加到您的 PATH 环境变量中..."
-        echo -e "\n# Add user's bin directory to PATH\n$path_config" >> "$profile_file"
-        print_info "配置已写入到 $profile_file"
-        
-        echo
-        print_warning "快捷命令设置完成！为使其立即生效，请执行以下任一操作："
-        print_warning "  1. 运行命令: source $profile_file"
-        print_warning "  2. 关闭当前终端窗口，然后重新打开一个。"
-        echo
-    else
-        print_info "'$user_bin_dir' 已存在于您的 PATH 中，无需修改。"
-    fi
-}
-
-
-# 全新安装 (专为 Serv00 优化)
-run_installation() {
-    # ... (安装流程代码与之前版本相同) ...
-    # ... (此处省略以保持简洁) ...
-
-    print_info "配置完成，正在启动服务..."
-    start_snell
-    display_config
-    
-    read -p "您想设置开机自动启动吗? (y/n): " choice
-    if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-        setup_autostart
-    fi
-    
-    # 在安装流程的最后，自动设置快捷命令
-    setup_shortcut
-}
-
-
-# --- 为了让您能直接使用，下面是 V18 的完整代码 ---
-
-#!/bin/bash
-
-#================================================================
-# Snell Server 管理脚本 (V18 - 全自动快捷命令版)
-#
-# 更新日志:
-# - 安装时，自动创建 `snell` 快捷命令。
-# - 脚本运行时，会自动将自身保存到本地，以便创建快捷方式。
-#================================================================
-
-# --- 全局变量定义 ---
-SCRIPT_DIR="$HOME/snell"
-SCRIPT_PATH="$SCRIPT_DIR/snell.sh"
-SNELL_EXECUTABLE="$SCRIPT_DIR/bin/snell-server"
-SNELL_CONFIG="$SCRIPT_DIR/etc/snell-server.conf"
-SNELL_LOG_FILE="$SCRIPT_DIR/snell.log"
+SNELL_DIR="$HOME/snell"
+SNELL_EXECUTABLE="$SNELL_DIR/bin/snell-server"
+SNELL_CONFIG="$SNELL_DIR/etc/snell-server.conf"
+SNELL_LOG_FILE="$SNELL_DIR/snell.log"
 DOWNLOAD_URL="https://raw.githubusercontent.com/myouhi/serv00-snell/master/snell-server"
 
 # --- 基础函数 ---
@@ -146,16 +62,18 @@ stop_snell() {
     fi
 }
 
-# 显示当前配置
+# 显示当前配置 (根据您的建议重写)
 display_config() {
     if ! [ -r "$SNELL_CONFIG" ]; then
         print_error "错误：配置文件不存在或无法读取于 $SNELL_CONFIG"
         return
     fi
+
     clear
     print_info "以下是您的 Snell 配置文件 ($SNELL_CONFIG) 的原始内容："
     echo
     echo "=================================================="
+    # 直接使用 cat 命令显示文件内容
     cat "$SNELL_CONFIG"
     echo "=================================================="
     echo
@@ -169,35 +87,6 @@ setup_autostart() {
     local cron_command="@reboot nohup $SNELL_EXECUTABLE -c $SNELL_CONFIG > $SNELL_LOG_FILE 2>&1 &"
     (crontab -l 2>/dev/null | grep -Fv "snell-server"; echo "$cron_command") | crontab -
     print_info "✅ 开机自启设置/更新成功！"
-}
-
-# 自动设置快捷命令
-setup_shortcut() {
-    print_info "正在为您设置 'snell' 快捷命令..."
-    local user_bin_dir="$HOME/bin"
-    mkdir -p "$user_bin_dir"
-
-    # 创建软链接，-f 参数表示如果已存在则强制覆盖
-    ln -sf "$SCRIPT_PATH" "$user_bin_dir/snell"
-    
-    # 检查并添加 PATH 配置到 .bashrc
-    local profile_file="$HOME/.bashrc"
-    local path_config='export PATH="$HOME/bin:$PATH"'
-    
-    if ! grep -qF "$path_config" "$profile_file" 2>/dev/null; then
-        print_info "正在将 '$user_bin_dir' 添加到您的 PATH 环境变量中..."
-        # 使用 printf 避免 echo 的潜在问题，并确保换行
-        printf "\n# Add user's bin directory to PATH\n%s\n" "$path_config" >> "$profile_file"
-        print_info "配置已写入到 $profile_file"
-        
-        echo
-        print_warning "快捷命令设置完成！为使其立即生效，请执行以下任一操作："
-        print_warning "  1. 运行命令: source $profile_file"
-        print_warning "  2. 关闭当前终端窗口，然后重新打开一个。"
-        echo
-    else
-        print_info "'$user_bin_dir' 已存在于您的 PATH 中，无需修改。"
-    fi
 }
 
 # 全新安装 (专为 Serv00 优化)
@@ -228,7 +117,8 @@ run_installation() {
     print_info "开始执行自动化安装..."
 
     PSK=$(openssl rand -base64 24)
-    mkdir -p "$SCRIPT_DIR/bin" "$SCRIPT_DIR/etc"
+    mkdir -p "$SNELL_DIR/bin" "$SNELL_DIR/etc"
+    # 注意这里写入文件的格式，确保没有多余空格
     echo "[snell-server]" > "$SNELL_CONFIG"
     echo "listen = 0.0.0.0:$LISTEN_PORT" >> "$SNELL_CONFIG"
     echo "psk = $PSK" >> "$SNELL_CONFIG"
@@ -245,88 +135,117 @@ run_installation() {
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
         setup_autostart
     fi
-
-    # 在安装流程的最后，自动设置快捷命令
-    setup_shortcut
 }
 
-# 修改配置
+# 修改配置 (专为 Serv00 优化)
 run_modify_config() {
-    # ... (省略，与之前版本相同)
+    print_warning "修改端口前，请确保新端口已经在 Serv00 后台为您分配！"
+    echo "您想修改什么？"
+    echo "  1. 修改端口号"
+    echo "  2. 重新生成 PSK (密码)"
+    read -p "请输入选项: " choice
+    case "$choice" in
+        1)
+            while true; do
+                read -p "请输入 Serv00 为您分配的【新】端口号: " NEW_PORT
+                if [[ "$NEW_PORT" =~ ^[0-9]+$ ]] && [ "$NEW_PORT" -gt 1024 ]; then break; else print_warning "输入无效！"; fi
+            done
+            sed -i "s/^listen = .*/listen = 0.0.0.0:$NEW_PORT/" "$SNELL_CONFIG"
+            print_info "端口已更新为 $NEW_PORT。"
+            ;;
+        2)
+            NEW_PSK=$(openssl rand -base64 24)
+            sed -i "s/^psk = .*/psk = $NEW_PSK/" "$SNELL_CONFIG"
+            print_info "PSK 已被重置为一个新的随机密码。"
+            ;;
+        *) print_warning "无效选择。"; return ;;
+    esac
+
+    print_info "配置已修改，为使新配置生效，服务将自动重启..."
+    stop_snell
+    start_snell
 }
 
 # 卸载
 run_uninstall() {
-    # ... (省略，与之前版本相同)
+    read -p "这将彻底删除 Snell 所有文件和配置，确定吗? (y/n): " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then print_info "操作已取消。"; return; fi
+
+    stop_snell
+    crontab -l 2>/dev/null | grep -v "snell-server" | crontab -
+    rm -rf "$SNELL_DIR"
+    print_info "✅ Snell 已被成功卸载。"
 }
 
 # --- 菜单逻辑 ---
+
+# 管理菜单 (已安装时显示)
 show_management_menu() {
-    # ... (省略，与之前版本相同)
-}
-show_initial_menu() {
-    # ... (省略，与之前版本相同)
+    while true; do
+        clear
+        echo "========================================"
+        echo "      Snell Server 管理菜单"
+        echo "========================================"
+        check_running_status # 显示运行状态
+
+        echo
+        echo "请选择操作："
+        echo "  1. 启动 Snell 服务"
+        echo "  2. 停止 Snell 服务"
+        echo "  3. 重启 Snell 服务"
+        echo "  4. 修改配置 (端口 / PSK)"
+        echo "  5. 设置/更新开机自启"
+        echo "  6. 查看节点信息 (直接显示配置文件)"
+        echo "  7. 卸载 Snell"
+        echo "  q. 退出脚本"
+        echo
+
+        read -p "请输入选项: " choice
+        case "$choice" in
+            1) start_snell ;;
+            2) stop_snell ;;
+            3) print_info "正在重启服务..."; stop_snell; start_snell ;;
+            4) run_modify_config ;;
+            5) setup_autostart ;;
+            6) display_config ;;
+            7) run_uninstall; echo "卸载完成，脚本将退出。"; sleep 2; exit 0 ;;
+            q|Q) echo "正在退出。"; exit 0 ;;
+            *) print_warning "无效输入。" ;;
+        esac
+
+        echo
+        read -n 1 -s -r -p "按任意键返回主菜单..."
+    done
 }
 
+# 初始菜单 (未安装时显示)
+show_initial_menu() {
+    clear
+    echo "========================================"
+    echo "      Snell Server 安装向导 (Serv00)"
+    echo "      (未检测到 Snell 安装)"
+    echo "========================================"
+    echo
+    echo "请选择操作："
+    echo "  1. 开始全新安装 Snell"
+    echo "  q. 退出安装"
+    echo
+
+    read -p "请输入选项 [1, q]: " choice
+
+    case "$choice" in
+        1) run_installation ;;
+        q|Q) echo "正在退出。"; exit 0 ;;
+        *) print_error "无效输入。"; exit 1 ;;
+    esac
+}
 
 # --- 脚本主入口 ---
-
-# 步骤1: 脚本自我保存 (仅在通过 curl | bash 运行时触发)
-# $0 是 'bash' 意味着它很可能是通过管道执行的
-if [ ! -f "$SCRIPT_PATH" ] && [ "$(basename "$0")" = "bash" ]; then
-    print_info "首次运行，正在将脚本自身保存到 $SCRIPT_PATH ..."
-    mkdir -p "$SCRIPT_DIR"
-    # 将 curl 的内容（即脚本本身）写入到文件
-    cat > "$SCRIPT_PATH"
-    chmod +x "$SCRIPT_PATH"
-    print_info "保存成功。正在从本地文件重新启动脚本..."
-    echo "----------------------------------------------------"
-    # 用保存好的脚本文件替换当前进程，并传递所有原始参数
-    exec "$SCRIPT_PATH" "$@"
-fi
-
-
-# 步骤2: 检查依赖
 if ! command -v curl &> /dev/null || ! command -v openssl &> /dev/null || ! command -v awk &> /dev/null; then
     print_error "错误：本脚本需要 'curl', 'openssl' 和 'awk'，请先确保它们已安装。"
     exit 1
 fi
 
-# 步骤3: 执行快捷命令或进入菜单
-if [ "$#" -gt 0 ]; then
-    # 如果有参数，进入快捷命令模式
-    case "$1" in
-        start) start_snell ;;
-        stop) stop_snell ;;
-        restart) print_info "正在执行重启操作..."; stop_snell; start_snell; check_running_status ;;
-        status) check_running_status ;;
-        config|info) display_config ;;
-        log)
-            if [ -f "$SNELL_LOG_FILE" ]; then
-                print_info "正在实时显示日志 (按 Ctrl+C 退出)..."
-                tail -f "$SNELL_LOG_FILE"
-            else
-                print_error "日志文件不存在: $SNELL_LOG_FILE"
-            fi
-            ;;
-        uninstall) run_uninstall ;;
-        help|*)
-            echo "Snell Server 管理脚本快捷命令用法:"
-            echo "  $0 start          - 启动 Snell 服务"
-            echo "  $0 stop           - 停止 Snell 服务"
-            echo "  $0 restart        - 重启 Snell 服务"
-            echo "  $0 status         - 查看运行状态"
-            echo "  $0 config|info    - 查看节点配置"
-            echo "  $0 log            - 实时查看日志"
-            echo "  $0 uninstall      - 卸载 Snell"
-            echo "  $0 help           - 显示此帮助信息"
-            echo "不带任何参数运行 '$0' 将进入交互式菜单。"
-            ;;
-    esac
-    exit 0
-fi
-
-# 如果没有参数，进入交互式菜单模式
 if check_installation; then
     show_management_menu
 else
