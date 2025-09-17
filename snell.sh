@@ -1,10 +1,11 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (serv00专用版 V14.1 - 最终版)
+# Snell Server 管理脚本 (serv00专用版 V16)
 #
-# 更新日志 (V14.1):
-# - 版本显示优化: 当无法自动检测到版本时，默认显示为 v3。
+# 更新日志 (V16):
+# - 默认配置修改: 移除 obfs=http 设置，默认使用 none (无混淆)。
+# - 简化安装流程: 移除了 obfs 模式选择。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -40,7 +41,7 @@ get_snell_version() {
     if [ -n "$version" ]; then
         echo "$version"
     else
-        echo "v3" # 如果检测失败，默认显示 v3
+        echo "v3" 
     fi
 }
 
@@ -113,18 +114,25 @@ run_installation() {
     echo "========================================"
     echo "      Snell Server 安装程序 (Serv00)"
     echo "========================================"; echo
+    
     print_warning "请确保您已在 Serv00 面板的 'Porty' 中获取了端口。"
     while true; do
         read -p "请输入 Serv00 为您分配的端口号: " LISTEN_PORT
         if [[ "$LISTEN_PORT" =~ ^[0-9]+$ ]] && [ "$LISTEN_PORT" -gt 1024 ]; then break; else print_warning "输入无效！"; fi
     done
+
     print_info "好的，将使用端口: $LISTEN_PORT"
     print_info "开始执行自动化安装..."
     PSK=$(openssl rand -base64 24)
     mkdir -p "$SCRIPT_DIR/bin" "$SCRIPT_DIR/etc"
+    
+    # --- 生成配置文件 (obfs=none) ---
     {
-        echo "[snell-server]"; echo "listen = 0.0.0.0:$LISTEN_PORT"; echo "psk = $PSK"; echo "obfs = http"
+        echo "[snell-server]"
+        echo "listen = 0.0.0.0:$LISTEN_PORT"
+        echo "psk = $PSK"
     } > "$SNELL_CONFIG"
+
     print_info "正在下载 Snell 程序..."
     curl -L -s "$DOWNLOAD_URL" -o "$SNELL_EXECUTABLE" && chmod +x "$SNELL_EXECUTABLE"
     print_info "配置完成，正在启动服务..."
