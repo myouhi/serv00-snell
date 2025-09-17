@@ -1,10 +1,10 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (serv00专用版 V9.2)
+# Snell Server 管理脚本 (serv00专用版 V9.5)
 #
-# 更新日志 (V9.2):
-# - 菜单标题优化: 将“Snell Server 管理菜单”修改为“Snell 管理工具”。
+# 更新日志 (V9.5):
+# - 子菜单文本优化: 精简了“修改配置”内的选项描述。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -71,7 +71,7 @@ restart_snell() {
     stop_snell; start_snell
 }
 
-# 显示当前配置
+# 查看配置
 display_config() {
     if ! check_installation; then print_error "Snell 未安装，无法查看配置。"; return 1; fi
     if ! [ -r "$SNELL_CONFIG" ]; then print_error "配置文件不存在: $SNELL_CONFIG"; return; fi
@@ -100,7 +100,7 @@ run_installation() {
         read -p "是否继续? (y/n): " confirm
         if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then print_info "操作已取消。"; return; fi
     fi
-    
+
     echo "========================================"
     echo "      Snell Server 安装程序 (Serv00)"
     echo "========================================"; echo
@@ -119,7 +119,6 @@ run_installation() {
     print_info "正在下载 Snell 程序..."
     curl -L -s "$DOWNLOAD_URL" -o "$SNELL_EXECUTABLE" && chmod +x "$SNELL_EXECUTABLE"
     print_info "配置完成，正在启动服务..."
-    # 重启以确保旧进程被杀死
     restart_snell
     display_config
     if [ ! -f "$HOME/bin/snell" ]; then
@@ -134,7 +133,7 @@ run_modify_config() {
     if ! check_installation; then print_error "Snell 未安装，无法修改配置。"; return 1; fi
     if ! [ -w "$SNELL_CONFIG" ]; then print_error "错误：配置文件不可写！"; return 1; fi
     print_warning "修改端口前，请确保新端口已经在 Serv00 后台为您分配！"
-    echo "您想修改什么？"; echo "  1. 修改端口号"; echo "  2. 重新生成 PSK (密码)"
+    echo "您想修改什么？"; echo "  1. 修改端口"; echo "  2. 生成密码"
     read -p "请输入选项: " choice
     local temp_file="$SNELL_CONFIG.tmp"; local success=false
     case "$choice" in
@@ -161,6 +160,28 @@ run_uninstall() {
     print_info "✅ Snell 已被成功卸载。"
 }
 
+# 自动设置快捷命令
+setup_shortcut() {
+    print_info "正在为您设置 'snell' 快捷命令..."
+    local user_bin_dir="$HOME/bin"
+    mkdir -p "$user_bin_dir"
+    ln -sf "$SCRIPT_PATH" "$user_bin_dir/snell"
+    local profile_file="$HOME/.bashrc"
+    local path_config='export PATH="$HOME/bin:$PATH"'
+    if ! grep -qF "$path_config" "$profile_file" 2>/dev/null; then
+        print_info "正在将 '$user_bin_dir' 添加到您的 PATH 环境变量中..."
+        printf "\n# Add user's bin directory to PATH\n%s\n" "$path_config" >> "$profile_file"
+        print_info "配置已写入到 $profile_file"
+        echo
+        print_warning "快捷命令设置完成！为使其立即生效，请执行以下任一操作："
+        print_warning "  1. 运行命令: source $profile_file"
+        print_warning "  2. 关闭当前终端窗口，然后重新打开一个。"
+        echo
+    else
+        print_info "'$user_bin_dir' 已存在于您的 PATH 中，无需修改。"
+    fi
+}
+
 # --- 静态菜单逻辑 ---
 show_main_menu() {
     while true; do
@@ -178,12 +199,18 @@ show_main_menu() {
             echo -e "  运行状态: \033[1;31m● 已停止\033[0m"
         fi
         echo "========================================"; echo
-        
-        echo "  1. 安装             5. 修改配置"
-        echo "  2. 启动             6. 开机自启"
-        echo "  3. 停止             7. 节点信息"
-        echo "  4. 重启             8. 卸载"
-        echo; echo "  0. 退出脚本"; echo
+
+        echo "  1. 安装"
+        echo "  2. 启动"
+        echo "  3. 停止"
+        echo "  4. 重启"
+        echo "  5. 查看配置"
+        echo "  6. 修改配置"
+        echo "  7. 开机自启"
+        echo "  8. 卸载"
+        echo
+        echo "  0. 退出脚本"
+        echo
 
         read -p "请输入选项: " choice
         case "$choice" in
@@ -191,14 +218,14 @@ show_main_menu() {
             2) start_snell ;;
             3) stop_snell ;;
             4) restart_snell ;;
-            5) run_modify_config ;;
-            6) setup_autostart ;;
-            7) display_config ;;
+            5) display_config ;;
+            6) run_modify_config ;;
+            7) setup_autostart ;;
             8) run_uninstall ;;
             0) echo "正在退出。"; exit 0 ;;
             *) print_warning "无效输入。" ;;
         esac
-        
+
         echo
         read -n 1 -s -r -p "按任意键返回主菜单..."
     done
@@ -239,7 +266,7 @@ if [ "$#" -gt 0 ]; then
             echo "  $0 stop          - 停止"
             echo "  $0 restart       - 重启"
             echo "  $0 status        - 查看运行状态"
-            echo "  $0 config|info   - 节点信息"
+            echo "  $0 config|info   - 查看配置"
             echo "  $0 log           - 实时查看日志"
             echo "  $0 uninstall     - 卸载"
             echo "  $0 help          - 显示此帮助信息"
