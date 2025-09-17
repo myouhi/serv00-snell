@@ -1,11 +1,11 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (V15 - 深度调试版)
+# Snell Server 管理脚本 (V16 - 直接显示配置文件)
 #
 # 更新日志:
-# - 重写 "display_config" 函数，加入详细的调试步骤输出，
-#   用于定位在特殊环境下无法显示配置的根本原因。
+# - 根据用户建议，将“查看节点信息”功能修改为直接使用 cat 命令
+#   显示配置文件的原始内容，确保信息显示的绝对可靠。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -62,70 +62,24 @@ stop_snell() {
     fi
 }
 
-# 显示当前配置 (深度调试版)
+# 显示当前配置 (根据您的建议重写)
 display_config() {
     if ! [ -r "$SNELL_CONFIG" ]; then
-        print_error "调试: 配置文件不存在或无法读取于 $SNELL_CONFIG"
+        print_error "错误：配置文件不存在或无法读取于 $SNELL_CONFIG"
         return
     fi
 
     clear
-    print_info "开始调试 'display_config' 函数..."
-    echo "------------------------------------"
-    echo "步骤 1: 打印配置文件的原始内容 ($SNELL_CONFIG):"
-    cat "$SNELL_CONFIG"
-    echo "------------------------------------"
-
-    # 初始化变量
-    local port=""
-    local psk=""
-
-    echo "步骤 2: 逐行读取文件并尝试解析..."
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        echo "  - 正在处理行: '$line'"
-        if [[ $line == listen* ]]; then
-            echo "    > 该行匹配 'listen*'"
-            # 使用更简单的 sed 命令，只保留数字
-            local temp_port=$(echo "$line" | sed 's/[^0-9]*//g' | awk '{print substr($0, length($0)-4)}')
-            echo "    > 尝试提取出的 port 值是: '$temp_port'"
-            port="$temp_port"
-        elif [[ $line == psk* ]]; then
-            echo "    > 该行匹配 'psk*'"
-            # 使用 sed 去掉 "psk = " 部分并去除前后空格
-            local temp_psk=$(echo "$line" | sed 's/psk[[:space:]]*=[[:space:]]*//; s/^[[:space:]]*//; s/[[:space:]]*$//')
-            echo "    > 尝试提取出的 psk 值是: '$temp_psk'"
-            psk="$temp_psk"
-        else
-            echo "    > 该行不匹配 'listen' 或 'psk'，已跳过。"
-        fi
-    done < "$SNELL_CONFIG"
-    echo "------------------------------------"
-    
-    echo "步骤 3: 解析循环结束。最终变量值为:"
-    echo "  - port 变量的值是: '$port'"
-    echo "  - psk 变量的值是: '$psk'"
-    echo "------------------------------------"
-
-    local ip=$(curl -s icanhazip.com)
-
-    echo "步骤 4: 准备显示最终输出..."
+    print_info "以下是您的 Snell 配置文件 ($SNELL_CONFIG) 的原始内容："
     echo
-    echo -e "\033[1;32m========== SNELL 节点信息 (调试结果) ==========\033[0m"
-    if [[ -z "$port" || -z "$psk" ]]; then
-        echo -e "  \033[1;31m错误：最终 port 或 psk 变量为空，无法显示。请检查上面的调试步骤。\033[0m"
-    else
-        echo -e "  服务器地址: \033[1;33m${ip:-<获取失败, 请手动查询>}\033[0m"
-        echo -e "  端口: \033[1;33m${port}\033[0m"
-        echo -e "  密码 (PSK): \033[1;33m${psk}\033[0m"
-        echo -e "  混淆 (obfs): \033[1;33mhttp\033[0m"
-    fi
-    echo -e "\033[1;32m===============================================\033[0m"
+    echo "=================================================="
+    # 直接使用 cat 命令显示文件内容
+    cat "$SNELL_CONFIG"
+    echo "=================================================="
+    echo
+    print_info "您的 IP 地址是: $(curl -s icanhazip.com)"
+    print_info "请根据以上信息在您的客户端中进行配置。"
 }
-
-
-# (其余函数与之前版本相同，为了简洁此处省略，但请在实际使用时包含完整代码)
-# ... (run_installation, run_modify_config, run_uninstall, setup_autostart, ...)
-# --- 为了让您能直接使用，下面是 V15 的完整代码 ---
 
 # 设置开机自启
 setup_autostart() {
@@ -241,7 +195,7 @@ show_management_menu() {
         echo "  3. 重启 Snell 服务"
         echo "  4. 修改配置 (端口 / PSK)"
         echo "  5. 设置/更新开机自启"
-        echo "  6. 查看节点信息 (调试模式)"
+        echo "  6. 查看节点信息 (直接显示配置文件)"
         echo "  7. 卸载 Snell"
         echo "  q. 退出脚本"
         echo
