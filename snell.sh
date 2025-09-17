@@ -1,14 +1,17 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (V29 - 终极文件修改修复版)
+# Snell Server 管理脚本 (V30 - 最终健壮版)
 #
 # 更新日志:
-# - 重写“修改配置”功能，使用更可靠的“临时文件”方法替换 sed -i，
-#   以在所有系统环境（特别是Serv00）下确保文件修改成功。
+# - 增加“自我修复/安装”机制。无论从何处运行，脚本都会确保自身
+#   存在于正确位置 (`~/snell/snell.sh`)，从根本上解决快捷方式失效问题。
 #================================================================
 
 # --- 全局变量定义 ---
+# 【重要】这个链接是脚本自我更新的来源，请确保它永远有效
+SCRIPT_URL="https://raw.githubusercontent.com/myouhi/serv00-snell/master/snell.sh"
+
 SCRIPT_DIR="$HOME/snell"
 SCRIPT_PATH="$SCRIPT_DIR/snell.sh"
 SNELL_EXECUTABLE="$SCRIPT_DIR/bin/snell-server"
@@ -27,6 +30,21 @@ check_installation() {
 }
 
 # --- 核心功能函数 ---
+# (为保持简洁，以下函数省略，它们与之前版本完全相同。完整代码在下方。)
+check_running_status() { :; }
+start_snell() { :; }
+stop_snell() { :; }
+restart_snell() { :; }
+display_config() { :; }
+setup_autostart() { :; }
+setup_shortcut() { :; }
+run_installation() { :; }
+run_modify_config() { :; }
+run_uninstall() { :; }
+show_management_menu() { :; }
+show_initial_menu() { :; }
+
+# --- 为了让您能直接使用，下面是 V30 的完整代码 ---
 
 # 检查当前运行状态并显示
 check_running_status() {
@@ -66,40 +84,24 @@ stop_snell() {
 # 重启 Snell 服务 (更可靠)
 restart_snell() {
     if ! check_installation; then print_error "Snell 未安装，无法重启。"; return 1; fi
-    
     print_info "正在执行重启操作..."
-    
-    # 步骤1: 停止当前服务
     if pgrep -f "snell-server" > /dev/null; then
         print_info "  -> 正在停止当前服务..."
         killall snell-server &>/dev/null
-        
-        # 循环检测以确认进程已终止
         local counter=0
         while pgrep -f "snell-server" > /dev/null; do
-            if [ $counter -ge 5 ]; then
-                print_error "  -> 无法停止旧的 Snell 进程！请手动检查。"
-                return 1
-            fi
-            sleep 1
-            ((counter++))
+            if [ $counter -ge 5 ]; then print_error "  -> 无法停止旧的 Snell 进程！请手动检查。"; return 1; fi
+            sleep 1; ((counter++))
         done
         print_info "  -> 服务已停止。"
     else
         print_warning "  -> 服务当前未在运行，将直接启动。"
     fi
-    
-    # 步骤2: 启动新服务
     print_info "  -> 正在启动新服务..."
     nohup "$SNELL_EXECUTABLE" -c "$SNELL_CONFIG" > "$SNELL_LOG_FILE" 2>&1 &
     sleep 2
-    if pgrep -f "snell-server" > /dev/null; then
-        print_info "✅ 服务已成功重启！"
-    else
-        print_error "❌ 服务启动失败！请检查日志。"
-    fi
+    if pgrep -f "snell-server" > /dev/null; then print_info "✅ 服务已成功重启！"; else print_error "❌ 服务启动失败！请检查日志。"; fi
 }
-
 
 # 显示当前配置
 display_config() {
@@ -131,17 +133,13 @@ setup_shortcut() {
     print_info "正在为您设置 'snell' 快捷命令..."
     local user_bin_dir="$HOME/bin"
     mkdir -p "$user_bin_dir"
-
     ln -sf "$SCRIPT_PATH" "$user_bin_dir/snell"
-
     local profile_file="$HOME/.bashrc"
     local path_config='export PATH="$HOME/bin:$PATH"'
-
     if ! grep -qF "$path_config" "$profile_file" 2>/dev/null; then
         print_info "正在将 '$user_bin_dir' 添加到您的 PATH 环境变量中..."
         printf "\n# Add user's bin directory to PATH\n%s\n" "$path_config" >> "$profile_file"
         print_info "配置已写入到 $profile_file"
-
         echo
         print_warning "快捷命令设置完成！为使其立即生效，请执行以下任一操作："
         print_warning "  1. 运行命令: source $profile_file"
@@ -152,7 +150,7 @@ setup_shortcut() {
     fi
 }
 
-# 全新安装
+# 全新安装 (专为 Serv00 优化)
 run_installation() {
     clear
     echo "========================================"
@@ -166,96 +164,65 @@ run_installation() {
     echo "  3. 点击 'Add port' 按钮，Serv00 会为您分配一个端口号。"
     echo "  4. 将那个分配给您的端口号，输入到下面的提示框中。"
     echo
-
     while true; do
         read -p "请输入 Serv00 为您分配的端口号: " LISTEN_PORT
-        if [[ "$LISTEN_PORT" =~ ^[0-9]+$ ]] && [ "$LISTEN_PORT" -gt 1024 ]; then
-            break
-        else
-            print_warning "输入无效！请输入一个有效的数字端口号。"
-        fi
+        if [[ "$LISTEN_PORT" =~ ^[0-9]+$ ]] && [ "$LISTEN_PORT" -gt 1024 ]; then break; else print_warning "输入无效！"; fi
     done
-
     print_info "好的，将使用端口: $LISTEN_PORT"
     print_info "开始执行自动化安装..."
-
     PSK=$(openssl rand -base64 24)
     mkdir -p "$SCRIPT_DIR/bin" "$SCRIPT_DIR/etc"
     echo "[snell-server]" > "$SNELL_CONFIG"
     echo "listen = 0.0.0.0:$LISTEN_PORT" >> "$SNELL_CONFIG"
     echo "psk = $PSK" >> "$SNELL_CONFIG"
     echo "obfs = http" >> "$SNELL_CONFIG"
-
     print_info "正在下载 Snell 程序..."
     curl -L -s "$DOWNLOAD_URL" -o "$SNELL_EXECUTABLE" && chmod +x "$SNELL_EXECUTABLE"
-
     print_info "配置完成，正在启动服务..."
     start_snell
     display_config
-
     read -p "您想设置开机自动启动吗? (y/n): " choice
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
         setup_autostart
     fi
-
     setup_shortcut
 }
 
-# 【全新重写】修改配置 (使用临时文件，确保兼容性)
+# 修改配置
 run_modify_config() {
-    if ! [ -w "$SNELL_CONFIG" ]; then
-        print_error "错误：配置文件不可写！请检查权限：$SNELL_CONFIG"
-        return 1
-    fi
-    
+    if ! [ -w "$SNELL_CONFIG" ]; then print_error "错误：配置文件不可写！请检查权限：$SNELL_CONFIG"; return 1; fi
     print_warning "修改端口前，请确保新端口已经在 Serv00 后台为您分配！"
     echo "您想修改什么？"
     echo "  1. 修改端口号"
     echo "  2. 重新生成 PSK (密码)"
     read -p "请输入选项: " choice
-
     local temp_file="$SNELL_CONFIG.tmp"
     local success=false
-
     case "$choice" in
         1)
             while true; do
                 read -p "请输入 Serv00 为您分配的【新】端口号: " NEW_PORT
                 if [[ "$NEW_PORT" =~ ^[0-9]+$ ]] && [ "$NEW_PORT" -gt 1024 ]; then break; else print_warning "输入无效！"; fi
             done
-            # 读取原文件，修改 listen 行，输出到临时文件
             sed "s/^listen = .*/listen = 0.0.0.0:$NEW_PORT/" "$SNELL_CONFIG" > "$temp_file"
             if [ $? -eq 0 ] && [ -s "$temp_file" ]; then
-                # 成功后，用临时文件覆盖原文件
-                mv "$temp_file" "$SNELL_CONFIG"
-                print_info "端口已更新为 $NEW_PORT。"
-                success=true
+                mv "$temp_file" "$SNELL_CONFIG"; print_info "端口已更新为 $NEW_PORT。"; success=true
             else
                 print_error "创建临时配置文件失败！"
             fi
             ;;
         2)
             NEW_PSK=$(openssl rand -base64 24)
-            # 读取原文件，修改 psk 行，输出到临时文件
             sed "s/^psk = .*/psk = $NEW_PSK/" "$SNELL_CONFIG" > "$temp_file"
             if [ $? -eq 0 ] && [ -s "$temp_file" ]; then
-                # 成功后，用临时文件覆盖原文件
-                mv "$temp_file" "$SNELL_CONFIG"
-                print_info "PSK 已被重置为一个新的随机密码。"
-                success=true
+                mv "$temp_file" "$SNELL_CONFIG"; print_info "PSK 已被重置为一个新的随机密码。"; success=true
             else
                 print_error "创建临时配置文件失败！"
             fi
             ;;
-        *) 
-            print_warning "无效选择。"
-            return
-            ;;
+        *) print_warning "无效选择。"; return ;;
     esac
-
-    # 清理可能残留的临时文件
     [ -f "$temp_file" ] && rm -f "$temp_file"
-
     if [ "$success" = true ]; then
         print_info "配置已修改，正在重启服务以应用新配置..."
         restart_snell
@@ -268,8 +235,9 @@ run_modify_config() {
 run_uninstall() {
     read -p "这将彻底删除 Snell 所有文件和配置，确定吗? (y/n): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then print_info "操作已取消。"; return; fi
-
     stop_snell
+    # 额外移除快捷方式和 bin 目录
+    rm -f "$HOME/bin/snell"
     crontab -l 2>/dev/null | grep -v "snell-server" | crontab -
     rm -rf "$SCRIPT_DIR"
     print_info "✅ Snell 已被成功卸载。"
@@ -283,7 +251,6 @@ show_management_menu() {
         echo "      Snell Server 管理菜单"
         echo "========================================"
         check_running_status
-
         echo
         echo "请选择操作："
         echo "  1. 启动"
@@ -295,7 +262,6 @@ show_management_menu() {
         echo "  7. 卸载"
         echo "  0. 退出脚本"
         echo
-
         read -p "请输入选项: " choice
         case "$choice" in
             1) start_snell ;;
@@ -308,7 +274,6 @@ show_management_menu() {
             0) echo "正在退出。"; exit 0 ;;
             *) print_warning "无效输入。" ;;
         esac
-
         echo
         read -n 1 -s -r -p "按任意键返回主菜单..."
     done
@@ -324,9 +289,7 @@ show_initial_menu() {
     echo "  1. 安装"
     echo "  0. 退出安装"
     echo
-
     read -p "请输入选项 [1, 0]: " choice
-
     case "$choice" in
         1) run_installation ;;
         0) echo "正在退出。"; exit 0 ;;
@@ -337,15 +300,22 @@ show_initial_menu() {
 
 # --- 脚本主入口 ---
 
-# 步骤1: 脚本自我保存
-if [ ! -f "$SCRIPT_PATH" ] && [ "$(basename "$0")" = "bash" ]; then
-    print_info "首次运行，正在将脚本自身保存到 $SCRIPT_PATH ..."
+# 步骤1: 脚本自我修复/安装
+# 检查当前脚本的绝对路径是否是预期的路径
+# 如果不是（例如通过 curl | bash 执行），则从 SCRIPT_URL 下载并保存到正确位置，然后重新执行
+if [ "$(realpath "$0" 2>/dev/null)" != "$SCRIPT_PATH" ]; then
+    print_info "首次运行或从非标准位置运行，正在将脚本安装到 $SCRIPT_PATH ..."
     mkdir -p "$SCRIPT_DIR"
-    cat > "$SCRIPT_PATH"
-    chmod +x "$SCRIPT_PATH"
-    print_info "保存成功。正在从本地文件重新启动脚本..."
-    echo "----------------------------------------------------"
-    exec "$SCRIPT_PATH" "$@"
+    if curl -sSL "$SCRIPT_URL" -o "$SCRIPT_PATH"; then
+        chmod +x "$SCRIPT_PATH"
+        print_info "脚本已成功安装到本地。"
+        print_info "正在从新位置重新启动..."
+        echo "----------------------------------------------------"
+        exec "$SCRIPT_PATH" "$@"
+    else
+        print_error "无法从 $SCRIPT_URL 下载脚本，请检查链接或网络。"
+        exit 1
+    fi
 fi
 
 
