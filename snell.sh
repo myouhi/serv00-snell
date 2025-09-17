@@ -1,10 +1,10 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (serv00专用版 V9.5)
+# Snell Server 管理脚本 (serv00专用版 V11.3)
 #
-# 更新日志 (V9.5):
-# - 子菜单文本优化: 精简了“修改配置”内的选项描述。
+# 更新日志 (V11.3):
+# - 代码注释优化。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -92,7 +92,7 @@ setup_autostart() {
     print_info "✅ 开机自启设置/更新成功！"
 }
 
-# 全新安装或重装
+# 安装 Snell 服务
 run_installation() {
     clear
     if check_installation; then
@@ -121,11 +121,9 @@ run_installation() {
     print_info "配置完成，正在启动服务..."
     restart_snell
     display_config
-    if [ ! -f "$HOME/bin/snell" ]; then
-        read -p "您想设置开机自动启动吗? (y/n): " choice
-        if [[ "$choice" == "y" || "$choice" == "Y" ]]; then setup_autostart; fi
-        setup_shortcut
-    fi
+
+    read -p "您想设置开机自动启动吗? (y/n): " choice
+    if [[ "$choice" == "y" || "$choice" == "Y" ]]; then setup_autostart; fi
 }
 
 # 修改配置
@@ -149,37 +147,15 @@ run_modify_config() {
     else print_error "配置修改失败！"; [ -f "$temp_file" ] && rm "$temp_file"; fi
 }
 
-# 卸载
+# 卸载服务
 run_uninstall() {
     if ! check_installation; then print_error "Snell 未安装，无需卸载。"; return 1; fi
     read -p "这将彻底删除 Snell 所有文件和配置，确定吗? (y/n): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then print_info "操作已取消。"; return; fi
     stop_snell
     crontab -l 2>/dev/null | grep -v "snell-server" | crontab -
-    rm -rf "$SCRIPT_DIR"; rm -f "$HOME/bin/snell"
+    rm -rf "$SCRIPT_DIR"
     print_info "✅ Snell 已被成功卸载。"
-}
-
-# 自动设置快捷命令
-setup_shortcut() {
-    print_info "正在为您设置 'snell' 快捷命令..."
-    local user_bin_dir="$HOME/bin"
-    mkdir -p "$user_bin_dir"
-    ln -sf "$SCRIPT_PATH" "$user_bin_dir/snell"
-    local profile_file="$HOME/.bashrc"
-    local path_config='export PATH="$HOME/bin:$PATH"'
-    if ! grep -qF "$path_config" "$profile_file" 2>/dev/null; then
-        print_info "正在将 '$user_bin_dir' 添加到您的 PATH 环境变量中..."
-        printf "\n# Add user's bin directory to PATH\n%s\n" "$path_config" >> "$profile_file"
-        print_info "配置已写入到 $profile_file"
-        echo
-        print_warning "快捷命令设置完成！为使其立即生效，请执行以下任一操作："
-        print_warning "  1. 运行命令: source $profile_file"
-        print_warning "  2. 关闭当前终端窗口，然后重新打开一个。"
-        echo
-    else
-        print_info "'$user_bin_dir' 已存在于您的 PATH 中，无需修改。"
-    fi
 }
 
 # --- 静态菜单逻辑 ---
@@ -200,14 +176,14 @@ show_main_menu() {
         fi
         echo "========================================"; echo
 
-        echo "  1. 安装"
-        echo "  2. 启动"
-        echo "  3. 停止"
-        echo "  4. 重启"
+        echo "  1. 安装服务"
+        echo "  2. 启动服务"
+        echo "  3. 停止服务"
+        echo "  4. 重启服务"
         echo "  5. 查看配置"
         echo "  6. 修改配置"
         echo "  7. 开机自启"
-        echo "  8. 卸载"
+        echo "  8. 卸载服务"
         echo
         echo "  0. 退出脚本"
         echo
@@ -248,31 +224,5 @@ if ! command -v curl &> /dev/null || ! command -v openssl &> /dev/null || ! comm
     exit 1
 fi
 
-# 参数模式或菜单模式
-if [ "$#" -gt 0 ]; then
-    case "$1" in
-        start) start_snell ;;
-        stop) stop_snell ;;
-        restart) restart_snell ;;
-        status) check_running_status ;;
-        config|info) display_config ;;
-        log)
-            if ! check_installation; then print_error "Snell 未安装。"; exit 1; fi
-            if [ -f "$SNELL_LOG_FILE" ]; then print_info "实时显示日志 (按 Ctrl+C 退出)..."; tail -f "$SNELL_LOG_FILE"; else print_error "日志文件不存在: $SNELL_LOG_FILE"; fi ;;
-        uninstall) run_uninstall ;;
-        help|*)
-            echo "Snell Server 管理脚本快捷命令用法:"
-            echo "  $0 start         - 启动"
-            echo "  $0 stop          - 停止"
-            echo "  $0 restart       - 重启"
-            echo "  $0 status        - 查看运行状态"
-            echo "  $0 config|info   - 查看配置"
-            echo "  $0 log           - 实时查看日志"
-            echo "  $0 uninstall     - 卸载"
-            echo "  $0 help          - 显示此帮助信息"
-            echo "不带任何参数运行 '$0' 将进入交互式菜单。";;
-    esac
-    exit 0
-fi
-
+# 始终只显示菜单
 show_main_menu
