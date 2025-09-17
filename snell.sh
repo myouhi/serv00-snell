@@ -1,11 +1,10 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (serv00专用版 V17)
+# Snell Server 管理脚本 (serv00专用版)
 #
-# 更新日志 (V17):
-# - 恢复obfs选择: 安装时可选择 none, http, tls 混淆模式。
-# - 默认使用none: 安装时若不选择，则默认使用无混淆模式。
+# 更新日志 (V24):
+# - 菜单文本优化: 在修改配置菜单中加入 port/psk 关键字。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -121,7 +120,6 @@ run_installation() {
         if [[ "$LISTEN_PORT" =~ ^[0-9]+$ ]] && [ "$LISTEN_PORT" -gt 1024 ]; then break; else print_warning "输入无效！"; fi
     done
 
-    # --- [V17 新增] obfs 模式选择 ---
     print_info "请选择流量混淆模式 (obfs):"
     echo "  1. none (默认, 无混淆)"
     echo "  2. http (简单兼容)"
@@ -129,7 +127,7 @@ run_installation() {
     local obfs_choice
     while true; do
         read -p "请输入选项 [1-3, 默认为 1]: " obfs_choice
-        obfs_choice=${obfs_choice:-1} # 如果用户直接按回车，默认为1
+        obfs_choice=${obfs_choice:-1}
         if [[ "$obfs_choice" =~ ^[1-3]$ ]]; then break; else print_warning "输入无效!"; fi
     done
 
@@ -140,12 +138,11 @@ run_installation() {
         obfs_mode_text="tls"
     fi
 
-    print_info "好的，将使用端口: $LISTEN_PORT, 混淆模式: $obfs_mode_text"
+    print_info "好的，将使用端口:$LISTEN_PORT, 混淆模式:$obfs_mode_text"
     print_info "开始执行自动化安装..."
     PSK=$(openssl rand -base64 24)
     mkdir -p "$SCRIPT_DIR/bin" "$SCRIPT_DIR/etc"
     
-    # --- 生成配置文件 ---
     {
         echo "[snell-server]"
         echo "listen = 0.0.0.0:$LISTEN_PORT"
@@ -165,7 +162,6 @@ run_installation() {
     restart_snell
     display_config
 
-    # --- [V17 新增] tls 模式的特别提示 ---
     if [ "$obfs_choice" -eq 3 ]; then
         echo
         print_warning "############################################################"
@@ -187,22 +183,91 @@ run_installation() {
 run_modify_config() {
     if ! check_installation; then print_error "Snell 未安装，无法修改配置。"; return 1; fi
     if ! [ -w "$SNELL_CONFIG" ]; then print_error "错误：配置文件不可写！"; return 1; fi
-    print_warning "修改端口前，请确保新端口已经在 Serv00 后台为您分配！"
-    echo "您想修改什么？"; echo "  1. 修改端口"; echo "  2. 生成密码"
+    
+    echo "您想修改什么？"
+    echo "  1. 修改 port 端口号"
+    echo "  2. 生成 psk 密码"
+    echo "  3. 修改 obfs 混淆模式"
+    echo "  0. 返回主菜单"
     read -p "请输入选项: " choice
-    local temp_file="$SNELL_CONFIG.tmp"; local success=false
+
+    local temp_file="$SNELL_CONFIG.tmp"
+    local success=false
+    local show_tls_warning=false
+
     case "$choice" in
         1)
+            print_warning "修改端口前，请确保新端口已经在 Serv00 后台为您分配！"
             while true; do read -p "请输入新端口号: " NEW_PORT; if [[ "$NEW_PORT" =~ ^[0-9]+$ ]] && [ "$NEW_PORT" -gt 1024 ]; then break; else print_warning "输入无效！"; fi; done
-            sed "s|^listen = .*|listen = 0.0.0.0:$NEW_PORT|" "$SNELL_CONFIG" > "$temp_file" && success=true ;;
+            local current_ip; current_ip=$(grep "^listen =" "$SNELL_CONFIG" | cut -d'=' -f2 | cut -d':' -f1 | xargs)
+            sed "s|^listen = .*|listen = $current_ip:$NEW_PORT|" "$SNELL_CONFIG" > "$temp_file" && success=true
+            ;;
         2)
-            NEW_PSK=$(openssl rand -base64 24); sed "s|^psk = .*|psk = $NEW_PSK|" "$SNELL_CONFIG" > "$temp_file" && success=true ;;
-        *) print_warning "无效选择。"; return ;;
+            NEW_PSK=$(openssl rand -base64 24)
+            sed "s|^psk = .*|psk = $NEW_PSK|" "$SNELL_CONFIG" > "$temp_file" && success=true
+            ;;
+        3)
+            print_info "请选择新的流量混淆模式 (obfs):"
+            echo "  1. none (默认, 无混淆)"
+            echo "  2. http (简单兼容)"
+            echo "  3. tls (更安全, 但需要您手动提供证书)"
+            local obfs_choice
+            while true; do
+                read -p "请输入选项 [1-3, 默认为 1]: " obfs_choice
+                obfs_choice=${obfs_choice:-1}
+                if [[ "$obfs_choice" =~ ^[1-3]$ ]]; then break; else print_warning "输入无效!"; fi
+            done
+
+            sed '/^obfs =/d;/^tls-cert =/d;/^tls-key =/d' "$SNELL_CONFIG" > "$temp_file"
+
+            if [ "$obfs_choice" -eq 2 ]; then
+                echo "obfs = http" >> "$temp_file"
+                print_info "obfs 模式已修改为 http。"
+            elif [ "$obfs_choice" -eq 3 ]; then
+                echo "obfs = tls" >> "$temp_file"
+                echo "tls-cert = /path/to/your/fullchain.pem" >> "$temp_file"
+                echo "tls-key = /path/to/your/private.key" >> "$temp_file"
+                show_tls_warning=true
+                print_info "obfs 模式已修改为 tls。"
+            else
+                print_info "obfs 模式已修改为 none (无混淆)。"
+            fi
+            mv "$temp_file" "$SNELL_CONFIG"
+            success=true
+            ;;
+        0)
+            return
+            ;;
+        *) 
+            print_warning "无效选择。"; return
+            ;;
     esac
-    if [ "$success" = true ] && [ -s "$temp_file" ]; then
-        mv "$temp_file" "$SNELL_CONFIG"; print_info "配置已修改。"; restart_snell; read -n 1 -s -r -p "按任意键查看新配置..."; display_config
-    else print_error "配置修改失败！"; [ -f "$temp_file" ] && rm "$temp_file"; fi
+
+    if [ "$success" = true ]; then
+        print_info "配置已修改，正在重启服务以应用新配置..."
+        restart_snell
+        
+        if [ "$show_tls_warning" = true ]; then
+            echo
+            print_warning "############################################################"
+            print_warning "# 重要提示: 您选择了 tls 混淆模式!                         #"
+            print_warning "#                                                          #"
+            print_warning "# 服务可能无法正常启动, 直到您手动编辑以下文件:              #"
+            print_warning "#   $SNELL_CONFIG   #"
+            print_warning "#                                                          #"
+            print_warning "# 并将 tls-cert 和 tls-key 指向您真实的证书和私钥文件路径. #"
+            print_warning "############################################################"
+            echo
+        fi
+
+        read -n 1 -s -r -p "按任意键查看更新后的配置..."
+        display_config
+    else 
+        print_error "配置修改失败！"
+        [ -f "$temp_file" ] && rm "$temp_file"
+    fi
 }
+
 
 # 卸载服务
 run_uninstall() {
