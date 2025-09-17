@@ -1,23 +1,11 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (serv00专用版V3版本 ）V4和v5不能使用
-# 在 Serv00 平台，您需要先手动获取一个端口。
-# 请按照以下步骤操作：
-# 1. 在浏览器中打开并登录您的 Serv00 控制面板。
-# 2. 在左侧菜单中找到 'Porty' (Ports) 选项并点击进入。
-# 3. 点击 'Add port' 按钮，创建tcp端口号。
-# 4. 运行脚本
-# 5. bash <(curl -sSL https://raw.githubusercontent.com/myouhi/serv00-snell/refs/heads/master/snell.sh)
-
-# 管理脚本快捷命令
-# 1. 下载脚本到正确的位置
-# 2. curl -o ~/snell/snell.sh https://raw.githubusercontent.com/myouhi/serv00-snell/master/snell.sh
-# 3. 给脚本加上执行权限
-# 4. chmod +x ~/snell/snell.sh
-# 5. 运行
-# 6. source ~/.bashrc
-# 7. 然后再次尝试 snell 命令
+# Snell Server 管理脚本 (serv00专用版 V7)
+#
+# 更新日志 (V7):
+# - 新增状态面板: 在主菜单清晰显示安装状态、运行版本和运行状态。
+# - 新增版本检测: 自动检测 snell-server 程序版本并显示。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -40,33 +28,51 @@ check_installation() {
 
 # --- 核心功能函数 ---
 
+# [V7 新增] 获取 Snell 程序版本
+get_snell_version() {
+    if ! check_installation; then
+        echo "未知"
+        return
+    fi
+    # 从二进制文件中提取版本号字符串, 如 "snell-server v4.0.1"
+    local version_str
+    version_str=$(strings "$SNELL_EXECUTABLE" | grep -oE 'snell-server v[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+    if [ -n "$version_str" ]; then
+        # 提取 "v4.0.1" 部分
+        echo "$version_str" | awk '{print $2}'
+    else
+        echo "未知"
+    fi
+}
+
+
 # 检查当前运行状态并显示
 check_running_status() {
-    if pgrep -f "snell-server" > /dev/null; then
-        echo -e "  当前状态: \033[1;32m● 运行中\033[0m"
+    if pgrep -f "$SNELL_EXECUTABLE" > /dev/null; then
+        echo -e "  运行状态: \033[1;32m● 运行中\033[0m"
     else
-        echo -e "  当前状态: \033[1;31m● 已停止\033[0m"
+        echo -e "  运行状态: \033[1;31m● 已停止\033[0m"
     fi
 }
 
 # 启动 Snell 服务
 start_snell() {
     if ! check_installation; then print_error "Snell 未安装，无法启动。"; return 1; fi
-    if pgrep -f "snell-server" > /dev/null; then
+    if pgrep -f "$SNELL_EXECUTABLE" > /dev/null; then
         print_warning "Snell 服务已经在运行中。"
         return
     fi
     print_info "正在启动 Snell 服务..."
     nohup "$SNELL_EXECUTABLE" -c "$SNELL_CONFIG" > "$SNELL_LOG_FILE" 2>&1 &
     sleep 2
-    if pgrep -f "snell-server" > /dev/null; then print_info "✅ 服务已成功启动！"; else print_error "❌ 服务启动失败！请检查日志。"; fi
+    if pgrep -f "$SNELL_EXECUTABLE" > /dev/null; then print_info "✅ 服务已成功启动！"; else print_error "❌ 服务启动失败！请检查日志。"; fi
 }
 
 # 停止 Snell 服务
 stop_snell() {
     if ! check_installation; then print_error "Snell 未安装，无法停止。"; return 1; fi
     print_info "正在停止 Snell 服务..."
-    if pgrep -f "snell-server" > /dev/null; then
+    if pgrep -f "$SNELL_EXECUTABLE" > /dev/null; then
         killall snell-server &>/dev/null
         sleep 1
         print_info "✅ 服务已停止。"
@@ -81,14 +87,11 @@ restart_snell() {
     
     print_info "正在执行重启操作..."
     
-    # 步骤1: 停止当前服务
-    if pgrep -f "snell-server" > /dev/null; then
+    if pgrep -f "$SNELL_EXECUTABLE" > /dev/null; then
         print_info "  -> 正在停止当前服务..."
         killall snell-server &>/dev/null
-        
-        # 循环检测以确认进程已终止
         local counter=0
-        while pgrep -f "snell-server" > /dev/null; do
+        while pgrep -f "$SNELL_EXECUTABLE" > /dev/null; do
             if [ $counter -ge 5 ]; then
                 print_error "  -> 无法停止旧的 Snell 进程！请手动检查。"
                 return 1
@@ -101,11 +104,10 @@ restart_snell() {
         print_warning "  -> 服务当前未在运行，将直接启动。"
     fi
     
-    # 步骤2: 启动新服务
     print_info "  -> 正在启动新服务..."
     nohup "$SNELL_EXECUTABLE" -c "$SNELL_CONFIG" > "$SNELL_LOG_FILE" 2>&1 &
     sleep 2
-    if pgrep -f "snell-server" > /dev/null; then
+    if pgrep -f "$SNELL_EXECUTABLE" > /dev/null; then
         print_info "✅ 服务已成功重启！"
     else
         print_error "❌ 服务启动失败！请检查日志。"
@@ -213,7 +215,7 @@ run_installation() {
     setup_shortcut
 }
 
-# 【全新重写】修改配置 (使用临时文件，确保兼容性)
+# 修改配置
 run_modify_config() {
     if ! [ -w "$SNELL_CONFIG" ]; then
         print_error "错误：配置文件不可写！请检查权限：$SNELL_CONFIG"
@@ -235,10 +237,8 @@ run_modify_config() {
                 read -p "请输入 Serv00 为您分配的【新】端口号: " NEW_PORT
                 if [[ "$NEW_PORT" =~ ^[0-9]+$ ]] && [ "$NEW_PORT" -gt 1024 ]; then break; else print_warning "输入无效！"; fi
             done
-            # 读取原文件，修改 listen 行，输出到临时文件
-            sed "s/^listen = .*/listen = 0.0.0.0:$NEW_PORT/" "$SNELL_CONFIG" > "$temp_file"
+            sed "s|^listen = .*|listen = 0.0.0.0:$NEW_PORT|" "$SNELL_CONFIG" > "$temp_file"
             if [ $? -eq 0 ] && [ -s "$temp_file" ]; then
-                # 成功后，用临时文件覆盖原文件
                 mv "$temp_file" "$SNELL_CONFIG"
                 print_info "端口已更新为 $NEW_PORT。"
                 success=true
@@ -248,10 +248,8 @@ run_modify_config() {
             ;;
         2)
             NEW_PSK=$(openssl rand -base64 24)
-            # 读取原文件，修改 psk 行，输出到临时文件
-            sed "s/^psk = .*/psk = $NEW_PSK/" "$SNELL_CONFIG" > "$temp_file"
+            sed "s|^psk = .*|psk = $NEW_PSK|" "$SNELL_CONFIG" > "$temp_file"
             if [ $? -eq 0 ] && [ -s "$temp_file" ]; then
-                # 成功后，用临时文件覆盖原文件
                 mv "$temp_file" "$SNELL_CONFIG"
                 print_info "PSK 已被重置为一个新的随机密码。"
                 success=true
@@ -265,12 +263,13 @@ run_modify_config() {
             ;;
     esac
 
-    # 清理可能残留的临时文件
     [ -f "$temp_file" ] && rm -f "$temp_file"
 
     if [ "$success" = true ]; then
         print_info "配置已修改，正在重启服务以应用新配置..."
         restart_snell
+        read -n 1 -s -r -p "按任意键查看更新后的配置..."
+        display_config
     else
         print_error "配置修改失败，服务未重启。"
     fi
@@ -284,6 +283,7 @@ run_uninstall() {
     stop_snell
     crontab -l 2>/dev/null | grep -v "snell-server" | crontab -
     rm -rf "$SCRIPT_DIR"
+    rm -f "$HOME/bin/snell"
     print_info "✅ Snell 已被成功卸载。"
 }
 
@@ -291,11 +291,15 @@ run_uninstall() {
 show_management_menu() {
     while true; do
         clear
+        local version
+        version=$(get_snell_version)
         echo "========================================"
         echo "      Snell Server 管理菜单"
-        echo "========================================"
+        echo "----------------------------------------"
+        echo -e "  安装状态: \033[1;32m● 已安装 (版本: $version)\033[0m"
         check_running_status
-
+        echo "========================================"
+        
         echo
         echo "请选择操作："
         echo "  1. 启动"
@@ -316,7 +320,7 @@ show_management_menu() {
             4) run_modify_config ;;
             5) setup_autostart ;;
             6) display_config ;;
-            7) run_uninstall; echo "卸载完成，脚本将退出。"; sleep 2; exit 0 ;;
+            7) run_uninstall; print_info "卸载完成，脚本将退出。"; sleep 2; exit 0 ;;
             0) echo "正在退出。"; exit 0 ;;
             *) print_warning "无效输入。" ;;
         esac
@@ -329,7 +333,8 @@ show_initial_menu() {
     clear
     echo "========================================"
     echo "      安装向导 (Serv00)"
-    echo "      (未检测到 Snell 安装)"
+    echo "----------------------------------------"
+    echo -e "  安装状态: \033[1;31m● 未安装\033[0m"
     echo "========================================"
     echo
     echo "请选择操作："
@@ -349,7 +354,6 @@ show_initial_menu() {
 
 # --- 脚本主入口 ---
 
-# 步骤1: 脚本自我保存
 if [ ! -f "$SCRIPT_PATH" ] && [ "$(basename "$0")" = "bash" ]; then
     print_info "首次运行，正在将脚本自身保存到 $SCRIPT_PATH ..."
     mkdir -p "$SCRIPT_DIR"
@@ -360,14 +364,11 @@ if [ ! -f "$SCRIPT_PATH" ] && [ "$(basename "$0")" = "bash" ]; then
     exec "$SCRIPT_PATH" "$@"
 fi
 
-
-# 步骤2: 检查依赖
-if ! command -v curl &> /dev/null || ! command -v openssl &> /dev/null || ! command -v awk &> /dev/null; then
-    print_error "错误：本脚本需要 'curl', 'openssl' 和 'awk'，请先确保它们已安装。"
+if ! command -v curl &> /dev/null || ! command -v openssl &> /dev/null || ! command -v sed &> /dev/null || ! command -v strings &> /dev/null; then
+    print_error "错误：本脚本需要 'curl', 'openssl', 'sed', 'strings'，请先确保它们已安装。"
     exit 1
 fi
 
-# 步骤3: 执行快捷命令或进入菜单
 if [ "$#" -gt 0 ]; then
     case "$1" in
         start) start_snell ;;
@@ -386,21 +387,20 @@ if [ "$#" -gt 0 ]; then
         uninstall) run_uninstall ;;
         help|*)
             echo "Snell Server 管理脚本快捷命令用法:"
-            echo "  $0 start          - 启动"
-            echo "  $0 stop           - 停止"
-            echo "  $0 restart        - 重启"
-            echo "  $0 status         - 查看运行状态"
-            echo "  $0 config|info    - 节点信息"
-            echo "  $0 log            - 实时查看日志"
-            echo "  $0 uninstall      - 卸载"
-            echo "  $0 help           - 显示此帮助信息"
+            echo "  $0 start         - 启动"
+            echo "  $0 stop          - 停止"
+            echo "  $0 restart       - 重启"
+            echo "  $0 status        - 查看运行状态"
+            echo "  $0 config|info   - 节点信息"
+            echo "  $0 log           - 实时查看日志"
+            echo "  $0 uninstall     - 卸载"
+            echo "  $0 help          - 显示此帮助信息"
             echo "不带任何参数运行 '$0' 将进入交互式菜单。"
             ;;
     esac
     exit 0
 fi
 
-# 如果没有参数，进入交互式菜单模式
 if check_installation; then
     show_management_menu
 else
