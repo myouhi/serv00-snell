@@ -16,7 +16,7 @@ curl -o ~/snell/snell.sh https://raw.githubusercontent.com/myouhi/serv00-snell/m
 
 2. 给脚本加上执行权限：chmod +x ~/snell/snell.sh
 
-3. 请您关闭当前的终端窗口，然后重新打开一个（或者运行 source ~/.bashrc），然后再次尝试 snell 命令。
+3. 测试：运行 source ~/.bashrc ，然后再次尝试 snell 命令。
 
 
 
