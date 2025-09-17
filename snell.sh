@@ -1,11 +1,11 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (V27 - 重启逻辑修复版)
+# Snell Server 管理脚本 (V29 - 终极文件修改修复版)
 #
 # 更新日志:
-# - 修复了修改配置后重启服务失败的 Bug。
-# - 引入了更可靠的 restart_snell 函数，确保旧进程完全停止后再启动。
+# - 重写“修改配置”功能，使用更可靠的“临时文件”方法替换 sed -i，
+#   以在所有系统环境（特别是Serv00）下确保文件修改成功。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -63,7 +63,7 @@ stop_snell() {
     fi
 }
 
-# 【新】重启 Snell 服务 (更可靠)
+# 重启 Snell 服务 (更可靠)
 restart_snell() {
     if ! check_installation; then print_error "Snell 未安装，无法重启。"; return 1; fi
     
@@ -201,32 +201,67 @@ run_installation() {
     setup_shortcut
 }
 
-# 修改配置
+# 【全新重写】修改配置 (使用临时文件，确保兼容性)
 run_modify_config() {
+    if ! [ -w "$SNELL_CONFIG" ]; then
+        print_error "错误：配置文件不可写！请检查权限：$SNELL_CONFIG"
+        return 1
+    fi
+    
     print_warning "修改端口前，请确保新端口已经在 Serv00 后台为您分配！"
     echo "您想修改什么？"
     echo "  1. 修改端口号"
     echo "  2. 重新生成 PSK (密码)"
     read -p "请输入选项: " choice
+
+    local temp_file="$SNELL_CONFIG.tmp"
+    local success=false
+
     case "$choice" in
         1)
             while true; do
                 read -p "请输入 Serv00 为您分配的【新】端口号: " NEW_PORT
                 if [[ "$NEW_PORT" =~ ^[0-9]+$ ]] && [ "$NEW_PORT" -gt 1024 ]; then break; else print_warning "输入无效！"; fi
             done
-            sed -i "s/^listen = .*/listen = 0.0.0.0:$NEW_PORT/" "$SNELL_CONFIG"
-            print_info "端口已更新为 $NEW_PORT。"
+            # 读取原文件，修改 listen 行，输出到临时文件
+            sed "s/^listen = .*/listen = 0.0.0.0:$NEW_PORT/" "$SNELL_CONFIG" > "$temp_file"
+            if [ $? -eq 0 ] && [ -s "$temp_file" ]; then
+                # 成功后，用临时文件覆盖原文件
+                mv "$temp_file" "$SNELL_CONFIG"
+                print_info "端口已更新为 $NEW_PORT。"
+                success=true
+            else
+                print_error "创建临时配置文件失败！"
+            fi
             ;;
         2)
             NEW_PSK=$(openssl rand -base64 24)
-            sed -i "s/^psk = .*/psk = $NEW_PSK/" "$SNELL_CONFIG"
-            print_info "PSK 已被重置为一个新的随机密码。"
+            # 读取原文件，修改 psk 行，输出到临时文件
+            sed "s/^psk = .*/psk = $NEW_PSK/" "$SNELL_CONFIG" > "$temp_file"
+            if [ $? -eq 0 ] && [ -s "$temp_file" ]; then
+                # 成功后，用临时文件覆盖原文件
+                mv "$temp_file" "$SNELL_CONFIG"
+                print_info "PSK 已被重置为一个新的随机密码。"
+                success=true
+            else
+                print_error "创建临时配置文件失败！"
+            fi
             ;;
-        *) print_warning "无效选择。"; return ;;
+        *) 
+            print_warning "无效选择。"
+            return
+            ;;
     esac
 
-    # 使用新的、可靠的重启函数
-    restart_snell
+    # 清理可能残留的临时文件
+    [ -f "$temp_file" ] && rm -f "$temp_file"
+
+    if [ "$success" = true ]; then
+        print_info "配置已修改，正在重启服务以应用新配置..."
+        restart_snell
+    else
+        print_error "配置修改失败，服务未重启。"
+    fi
 }
 
 # 卸载
@@ -265,7 +300,7 @@ show_management_menu() {
         case "$choice" in
             1) start_snell ;;
             2) stop_snell ;;
-            3) restart_snell ;; # 使用新的重启函数
+            3) restart_snell ;;
             4) run_modify_config ;;
             5) setup_autostart ;;
             6) display_config ;;
@@ -325,7 +360,7 @@ if [ "$#" -gt 0 ]; then
     case "$1" in
         start) start_snell ;;
         stop) stop_snell ;;
-        restart) restart_snell ;; # 使用新的重启函数
+        restart) restart_snell ;;
         status) check_running_status ;;
         config|info) display_config ;;
         log)
