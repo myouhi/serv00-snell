@@ -1,10 +1,11 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (V26 - 移除状态显示)
+# Snell Server 管理脚本 (V27 - 重启逻辑修复版)
 #
 # 更新日志:
-# - 根据用户要求，移除了所有与“运行状态”相关的功能。
+# - 修复了修改配置后重启服务失败的 Bug。
+# - 引入了更可靠的 restart_snell 函数，确保旧进程完全停止后再启动。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -26,6 +27,15 @@ check_installation() {
 }
 
 # --- 核心功能函数 ---
+
+# 检查当前运行状态并显示
+check_running_status() {
+    if pgrep -f "snell-server" > /dev/null; then
+        echo -e "  当前状态: \033[1;32m● 运行中\033[0m"
+    else
+        echo -e "  当前状态: \033[1;31m● 已停止\033[0m"
+    fi
+}
 
 # 启动 Snell 服务
 start_snell() {
@@ -52,6 +62,44 @@ stop_snell() {
         print_warning "Snell 服务当前未在运行。"
     fi
 }
+
+# 【新】重启 Snell 服务 (更可靠)
+restart_snell() {
+    if ! check_installation; then print_error "Snell 未安装，无法重启。"; return 1; fi
+    
+    print_info "正在执行重启操作..."
+    
+    # 步骤1: 停止当前服务
+    if pgrep -f "snell-server" > /dev/null; then
+        print_info "  -> 正在停止当前服务..."
+        killall snell-server &>/dev/null
+        
+        # 循环检测以确认进程已终止
+        local counter=0
+        while pgrep -f "snell-server" > /dev/null; do
+            if [ $counter -ge 5 ]; then
+                print_error "  -> 无法停止旧的 Snell 进程！请手动检查。"
+                return 1
+            fi
+            sleep 1
+            ((counter++))
+        done
+        print_info "  -> 服务已停止。"
+    else
+        print_warning "  -> 服务当前未在运行，将直接启动。"
+    fi
+    
+    # 步骤2: 启动新服务
+    print_info "  -> 正在启动新服务..."
+    nohup "$SNELL_EXECUTABLE" -c "$SNELL_CONFIG" > "$SNELL_LOG_FILE" 2>&1 &
+    sleep 2
+    if pgrep -f "snell-server" > /dev/null; then
+        print_info "✅ 服务已成功重启！"
+    else
+        print_error "❌ 服务启动失败！请检查日志。"
+    fi
+}
+
 
 # 显示当前配置
 display_config() {
@@ -84,16 +132,13 @@ setup_shortcut() {
     local user_bin_dir="$HOME/bin"
     mkdir -p "$user_bin_dir"
 
-    # 创建软链接，-f 参数表示如果已存在则强制覆盖
     ln -sf "$SCRIPT_PATH" "$user_bin_dir/snell"
 
-    # 检查并添加 PATH 配置到 .bashrc
     local profile_file="$HOME/.bashrc"
     local path_config='export PATH="$HOME/bin:$PATH"'
 
     if ! grep -qF "$path_config" "$profile_file" 2>/dev/null; then
         print_info "正在将 '$user_bin_dir' 添加到您的 PATH 环境变量中..."
-        # 使用 printf 避免 echo 的潜在问题，并确保换行
         printf "\n# Add user's bin directory to PATH\n%s\n" "$path_config" >> "$profile_file"
         print_info "配置已写入到 $profile_file"
 
@@ -107,7 +152,7 @@ setup_shortcut() {
     fi
 }
 
-# 全新安装 (专为 Serv00 优化)
+# 全新安装
 run_installation() {
     clear
     echo "========================================"
@@ -153,7 +198,6 @@ run_installation() {
         setup_autostart
     fi
 
-    # 在安装流程的最后，自动设置快捷命令
     setup_shortcut
 }
 
@@ -181,9 +225,8 @@ run_modify_config() {
         *) print_warning "无效选择。"; return ;;
     esac
 
-    print_info "配置已修改，为使新配置生效，服务将自动重启..."
-    stop_snell
-    start_snell
+    # 使用新的、可靠的重启函数
+    restart_snell
 }
 
 # 卸载
@@ -204,7 +247,8 @@ show_management_menu() {
         echo "========================================"
         echo "      Snell Server 管理菜单"
         echo "========================================"
-        
+        check_running_status
+
         echo
         echo "请选择操作："
         echo "  1. 启动"
@@ -221,7 +265,7 @@ show_management_menu() {
         case "$choice" in
             1) start_snell ;;
             2) stop_snell ;;
-            3) print_info "正在重启服务..."; stop_snell; start_snell ;;
+            3) restart_snell ;; # 使用新的重启函数
             4) run_modify_config ;;
             5) setup_autostart ;;
             6) display_config ;;
@@ -258,17 +302,14 @@ show_initial_menu() {
 
 # --- 脚本主入口 ---
 
-# 步骤1: 脚本自我保存 (仅在通过 curl | bash 运行时触发)
-# $0 是 'bash' 意味着它很可能是通过管道执行的
+# 步骤1: 脚本自我保存
 if [ ! -f "$SCRIPT_PATH" ] && [ "$(basename "$0")" = "bash" ]; then
     print_info "首次运行，正在将脚本自身保存到 $SCRIPT_PATH ..."
     mkdir -p "$SCRIPT_DIR"
-    # 将 curl 的内容（即脚本本身）写入到文件
     cat > "$SCRIPT_PATH"
     chmod +x "$SCRIPT_PATH"
     print_info "保存成功。正在从本地文件重新启动脚本..."
     echo "----------------------------------------------------"
-    # 用保存好的脚本文件替换当前进程，并传递所有原始参数
     exec "$SCRIPT_PATH" "$@"
 fi
 
@@ -281,11 +322,11 @@ fi
 
 # 步骤3: 执行快捷命令或进入菜单
 if [ "$#" -gt 0 ]; then
-    # 如果有参数，进入快捷命令模式
     case "$1" in
         start) start_snell ;;
         stop) stop_snell ;;
-        restart) print_info "正在执行重启操作..."; stop_snell; start_snell ;;
+        restart) restart_snell ;; # 使用新的重启函数
+        status) check_running_status ;;
         config|info) display_config ;;
         log)
             if [ -f "$SNELL_LOG_FILE" ]; then
@@ -301,6 +342,7 @@ if [ "$#" -gt 0 ]; then
             echo "  $0 start          - 启动"
             echo "  $0 stop           - 停止"
             echo "  $0 restart        - 重启"
+            echo "  $0 status         - 查看运行状态"
             echo "  $0 config|info    - 节点信息"
             echo "  $0 log            - 实时查看日志"
             echo "  $0 uninstall      - 卸载"
