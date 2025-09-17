@@ -1,10 +1,10 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (serv00专用版 V11.3)
+# Snell Server 管理脚本 (serv00专用版 V12)
 #
-# 更新日志 (V11.3):
-# - 代码注释优化。
+# 更新日志 (V12):
+# - 修正版本检测: 修复了版本号显示“未知”的问题，改用更可靠的命令直接获取。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -27,12 +27,25 @@ check_installation() {
 
 # --- 核心功能函数 ---
 
-# 获取 Snell 程序版本
+# [V12 修正] 获取 Snell 程序版本
 get_snell_version() {
-    if ! check_installation; then echo "未知"; return; fi
-    local version_str
-    version_str=$(strings "$SNELL_EXECUTABLE" | grep -oE 'snell-server v[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
-    if [ -n "$version_str" ]; then echo "$version_str" | awk '{print $2}'; else echo "未知"; fi
+    if ! check_installation; then
+        echo "未知"
+        return
+    fi
+    # 使用 -v 参数直接从程序获取版本信息，这是最可靠的方法
+    local version_output
+    version_output=$("$SNELL_EXECUTABLE" -v 2>&1)
+    
+    # 从输出中（例如 "snell-server v4.0.1"）精确提取版本号
+    local version
+    version=$(echo "$version_output" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+    
+    if [ -n "$version" ]; then
+        echo "$version"
+    else
+        echo "未知"
+    fi
 }
 
 # 检查当前运行状态并显示
