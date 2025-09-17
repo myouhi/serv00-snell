@@ -1,11 +1,11 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (serv00专用版 V16)
+# Snell Server 管理脚本 (serv00专用版 V17)
 #
-# 更新日志 (V16):
-# - 默认配置修改: 移除 obfs=http 设置，默认使用 none (无混淆)。
-# - 简化安装流程: 移除了 obfs 模式选择。
+# 更新日志 (V17):
+# - 恢复obfs选择: 安装时可选择 none, http, tls 混淆模式。
+# - 默认使用none: 安装时若不选择，则默认使用无混淆模式。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -61,7 +61,7 @@ start_snell() {
     print_info "正在启动 Snell 服务..."
     nohup "$SNELL_EXECUTABLE" -c "$SNELL_CONFIG" > "$SNELL_LOG_FILE" 2>&1 &
     sleep 2
-    if pgrep -f "$SNELL_EXECUTABLE" > /dev/null; then print_info "✅ 服务已成功启动！"; else print_error "❌ 服务启动失败！请检查日志。"; fi
+    if pgrep -f "$SNELL_EXECUTABLE" > /dev/null; then print_info "✅ 服务已成功启动！"; else print_error "❌ 服务启动失败！请检查日志或确认tls证书配置是否正确。"; fi
 }
 
 # 停止 Snell 服务
@@ -121,16 +121,42 @@ run_installation() {
         if [[ "$LISTEN_PORT" =~ ^[0-9]+$ ]] && [ "$LISTEN_PORT" -gt 1024 ]; then break; else print_warning "输入无效！"; fi
     done
 
-    print_info "好的，将使用端口: $LISTEN_PORT"
+    # --- [V17 新增] obfs 模式选择 ---
+    print_info "请选择流量混淆模式 (obfs):"
+    echo "  1. none (默认, 无混淆)"
+    echo "  2. http (简单兼容)"
+    echo "  3. tls (更安全, 但需要您手动提供证书)"
+    local obfs_choice
+    while true; do
+        read -p "请输入选项 [1-3, 默认为 1]: " obfs_choice
+        obfs_choice=${obfs_choice:-1} # 如果用户直接按回车，默认为1
+        if [[ "$obfs_choice" =~ ^[1-3]$ ]]; then break; else print_warning "输入无效!"; fi
+    done
+
+    local obfs_mode_text="none"
+    if [ "$obfs_choice" -eq 2 ]; then
+        obfs_mode_text="http"
+    elif [ "$obfs_choice" -eq 3 ]; then
+        obfs_mode_text="tls"
+    fi
+
+    print_info "好的，将使用端口: $LISTEN_PORT, 混淆模式: $obfs_mode_text"
     print_info "开始执行自动化安装..."
     PSK=$(openssl rand -base64 24)
     mkdir -p "$SCRIPT_DIR/bin" "$SCRIPT_DIR/etc"
     
-    # --- 生成配置文件 (obfs=none) ---
+    # --- 生成配置文件 ---
     {
         echo "[snell-server]"
         echo "listen = 0.0.0.0:$LISTEN_PORT"
         echo "psk = $PSK"
+        if [ "$obfs_choice" -eq 2 ]; then
+            echo "obfs = http"
+        elif [ "$obfs_choice" -eq 3 ]; then
+            echo "obfs = tls"
+            echo "tls-cert = /path/to/your/fullchain.pem"
+            echo "tls-key = /path/to/your/private.key"
+        fi
     } > "$SNELL_CONFIG"
 
     print_info "正在下载 Snell 程序..."
@@ -138,6 +164,20 @@ run_installation() {
     print_info "配置完成，正在启动服务..."
     restart_snell
     display_config
+
+    # --- [V17 新增] tls 模式的特别提示 ---
+    if [ "$obfs_choice" -eq 3 ]; then
+        echo
+        print_warning "############################################################"
+        print_warning "# 重要提示: 您选择了 tls 混淆模式!                         #"
+        print_warning "#                                                          #"
+        print_warning "# 服务可能无法正常启动, 直到您手动编辑以下文件:              #"
+        print_warning "#   $SNELL_CONFIG   #"
+        print_warning "#                                                          #"
+        print_warning "# 并将 tls-cert 和 tls-key 指向您真实的证书和私钥文件路径. #"
+        print_warning "############################################################"
+        echo
+    fi
 
     read -p "您想设置开机自动启动吗? (y/n): " choice
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then setup_autostart; fi
