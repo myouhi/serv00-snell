@@ -1,10 +1,11 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (最终完整版 - Serv00 定制)
+# Snell Server 管理脚本 (V15 - 深度调试版)
 #
-# 该脚本集合了所有讨论的功能，为非root环境下的Serv00平台提供
-# 了一套完整的Snell安装与管理解决方案。
+# 更新日志:
+# - 重写 "display_config" 函数，加入详细的调试步骤输出，
+#   用于定位在特殊环境下无法显示配置的根本原因。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -61,23 +62,70 @@ stop_snell() {
     fi
 }
 
-# 显示当前配置
+# 显示当前配置 (深度调试版)
 display_config() {
-    if ! check_installation; then print_error "Snell 未安装。"; return; fi
-    
-    print_info "正在刷新节点信息..."
-    local ip=$(curl -s icanhazip.com)
-    local port=$(grep -oP 'listen = .*:\K\d+' "$SNELL_CONFIG")
-    local psk=$(grep -oP 'psk = \K.*' "$SNELL_CONFIG")
+    if ! [ -r "$SNELL_CONFIG" ]; then
+        print_error "调试: 配置文件不存在或无法读取于 $SNELL_CONFIG"
+        return
+    fi
 
     clear
-    echo -e "\033[1;32m========== SNELL 节点信息 ==========\033[0m"
-    echo -e "  服务器地址: \033[1;33m${ip:-<获取失败, 请手动查询>}\033[0m"
-    echo -e "  端口: \033[1;33m${port}\033[0m"
-    echo -e "  密码 (PSK): \033[1;33m${psk}\033[0m"
-    echo -e "  混淆 (obfs): \033[1;33mhttp\033[0m"
-    echo -e "\033[1;32m====================================\033[0m"
+    print_info "开始调试 'display_config' 函数..."
+    echo "------------------------------------"
+    echo "步骤 1: 打印配置文件的原始内容 ($SNELL_CONFIG):"
+    cat "$SNELL_CONFIG"
+    echo "------------------------------------"
+
+    # 初始化变量
+    local port=""
+    local psk=""
+
+    echo "步骤 2: 逐行读取文件并尝试解析..."
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        echo "  - 正在处理行: '$line'"
+        if [[ $line == listen* ]]; then
+            echo "    > 该行匹配 'listen*'"
+            # 使用更简单的 sed 命令，只保留数字
+            local temp_port=$(echo "$line" | sed 's/[^0-9]*//g' | awk '{print substr($0, length($0)-4)}')
+            echo "    > 尝试提取出的 port 值是: '$temp_port'"
+            port="$temp_port"
+        elif [[ $line == psk* ]]; then
+            echo "    > 该行匹配 'psk*'"
+            # 使用 sed 去掉 "psk = " 部分并去除前后空格
+            local temp_psk=$(echo "$line" | sed 's/psk[[:space:]]*=[[:space:]]*//; s/^[[:space:]]*//; s/[[:space:]]*$//')
+            echo "    > 尝试提取出的 psk 值是: '$temp_psk'"
+            psk="$temp_psk"
+        else
+            echo "    > 该行不匹配 'listen' 或 'psk'，已跳过。"
+        fi
+    done < "$SNELL_CONFIG"
+    echo "------------------------------------"
+    
+    echo "步骤 3: 解析循环结束。最终变量值为:"
+    echo "  - port 变量的值是: '$port'"
+    echo "  - psk 变量的值是: '$psk'"
+    echo "------------------------------------"
+
+    local ip=$(curl -s icanhazip.com)
+
+    echo "步骤 4: 准备显示最终输出..."
+    echo
+    echo -e "\033[1;32m========== SNELL 节点信息 (调试结果) ==========\033[0m"
+    if [[ -z "$port" || -z "$psk" ]]; then
+        echo -e "  \033[1;31m错误：最终 port 或 psk 变量为空，无法显示。请检查上面的调试步骤。\033[0m"
+    else
+        echo -e "  服务器地址: \033[1;33m${ip:-<获取失败, 请手动查询>}\033[0m"
+        echo -e "  端口: \033[1;33m${port}\033[0m"
+        echo -e "  密码 (PSK): \033[1;33m${psk}\033[0m"
+        echo -e "  混淆 (obfs): \033[1;33mhttp\033[0m"
+    fi
+    echo -e "\033[1;32m===============================================\033[0m"
 }
+
+
+# (其余函数与之前版本相同，为了简洁此处省略，但请在实际使用时包含完整代码)
+# ... (run_installation, run_modify_config, run_uninstall, setup_autostart, ...)
+# --- 为了让您能直接使用，下面是 V15 的完整代码 ---
 
 # 设置开机自启
 setup_autostart() {
@@ -101,7 +149,7 @@ run_installation() {
     echo "  3. 点击 'Add port' 按钮，Serv00 会为您分配一个端口号。"
     echo "  4. 将那个分配给您的端口号，输入到下面的提示框中。"
     echo
-    
+
     while true; do
         read -p "请输入 Serv00 为您分配的端口号: " LISTEN_PORT
         if [[ "$LISTEN_PORT" =~ ^[0-9]+$ ]] && [ "$LISTEN_PORT" -gt 1024 ]; then
@@ -116,14 +164,19 @@ run_installation() {
 
     PSK=$(openssl rand -base64 24)
     mkdir -p "$SNELL_DIR/bin" "$SNELL_DIR/etc"
-    echo -e "[snell-server]\nlisten = 0.0.0.0:$LISTEN_PORT\npsk = $PSK\nobfs = http" > "$SNELL_CONFIG"
+    # 注意这里写入文件的格式，确保没有多余空格
+    echo "[snell-server]" > "$SNELL_CONFIG"
+    echo "listen = 0.0.0.0:$LISTEN_PORT" >> "$SNELL_CONFIG"
+    echo "psk = $PSK" >> "$SNELL_CONFIG"
+    echo "obfs = http" >> "$SNELL_CONFIG"
+
     print_info "正在下载 Snell 程序..."
     curl -L -s "$DOWNLOAD_URL" -o "$SNELL_EXECUTABLE" && chmod +x "$SNELL_EXECUTABLE"
-    
+
     print_info "配置完成，正在启动服务..."
     start_snell
     display_config
-    
+
     read -p "您想设置开机自动启动吗? (y/n): " choice
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
         setup_autostart
@@ -143,17 +196,17 @@ run_modify_config() {
                 read -p "请输入 Serv00 为您分配的【新】端口号: " NEW_PORT
                 if [[ "$NEW_PORT" =~ ^[0-9]+$ ]] && [ "$NEW_PORT" -gt 1024 ]; then break; else print_warning "输入无效！"; fi
             done
-            sed -i "s/listen = .*/listen = 0.0.0.0:$NEW_PORT/" "$SNELL_CONFIG"
+            sed -i "s/^listen = .*/listen = 0.0.0.0:$NEW_PORT/" "$SNELL_CONFIG"
             print_info "端口已更新为 $NEW_PORT。"
             ;;
         2)
             NEW_PSK=$(openssl rand -base64 24)
-            sed -i "s/psk = .*/psk = $NEW_PSK/" "$SNELL_CONFIG"
+            sed -i "s/^psk = .*/psk = $NEW_PSK/" "$SNELL_CONFIG"
             print_info "PSK 已被重置为一个新的随机密码。"
             ;;
         *) print_warning "无效选择。"; return ;;
     esac
-    
+
     print_info "配置已修改，为使新配置生效，服务将自动重启..."
     stop_snell
     start_snell
@@ -163,7 +216,7 @@ run_modify_config() {
 run_uninstall() {
     read -p "这将彻底删除 Snell 所有文件和配置，确定吗? (y/n): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then print_info "操作已取消。"; return; fi
-    
+
     stop_snell
     crontab -l 2>/dev/null | grep -v "snell-server" | crontab -
     rm -rf "$SNELL_DIR"
@@ -180,7 +233,7 @@ show_management_menu() {
         echo "      Snell Server 管理菜单"
         echo "========================================"
         check_running_status # 显示运行状态
-        
+
         echo
         echo "请选择操作："
         echo "  1. 启动 Snell 服务"
@@ -188,12 +241,12 @@ show_management_menu() {
         echo "  3. 重启 Snell 服务"
         echo "  4. 修改配置 (端口 / PSK)"
         echo "  5. 设置/更新开机自启"
-        echo "  6. 查看节点信息"
+        echo "  6. 查看节点信息 (调试模式)"
         echo "  7. 卸载 Snell"
         echo "  q. 退出脚本"
         echo
-        read -p "请输入选项: " choice
 
+        read -p "请输入选项: " choice
         case "$choice" in
             1) start_snell ;;
             2) stop_snell ;;
@@ -205,7 +258,7 @@ show_management_menu() {
             q|Q) echo "正在退出。"; exit 0 ;;
             *) print_warning "无效输入。" ;;
         esac
-        
+
         echo
         read -n 1 -s -r -p "按任意键返回主菜单..."
     done
@@ -223,6 +276,7 @@ show_initial_menu() {
     echo "  1. 开始全新安装 Snell"
     echo "  q. 退出安装"
     echo
+
     read -p "请输入选项 [1, q]: " choice
 
     case "$choice" in
@@ -233,8 +287,8 @@ show_initial_menu() {
 }
 
 # --- 脚本主入口 ---
-if ! command -v curl &> /dev/null || ! command -v openssl &> /dev/null; then
-    print_error "错误：本脚本需要 'curl' 和 'openssl'，请先确保它们已安装。"
+if ! command -v curl &> /dev/null || ! command -v openssl &> /dev/null || ! command -v awk &> /dev/null; then
+    print_error "错误：本脚本需要 'curl', 'openssl' 和 'awk'，请先确保它们已安装。"
     exit 1
 fi
 
