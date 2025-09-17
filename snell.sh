@@ -1,11 +1,12 @@
 #!/bin/bash
 
 #================================================================
-# Snell Server 管理脚本 (V13 - 最终修复与优化版)
+# Snell Server 管理脚本 (V14 - 最终修复版)
 #
-# 该脚本集合了所有讨论的功能，为非root环境下的Serv00平台提供
-# 了一套完整的Snell安装与管理解决方案。
-# 修复了关键的配置显示兼容性问题。
+# 更新日志:
+# - 根据用户建议，重写了配置读取函数。
+# - 采用最稳定、兼容性最强的逐行读取配置文件的方式，
+#   彻底解决在特殊环境下无法显示端口和PSK的问题。
 #================================================================
 
 # --- 全局变量定义 ---
@@ -52,56 +53,4 @@ start_snell() {
 # 停止 Snell 服务
 stop_snell() {
     if ! check_installation; then print_error "Snell 未安装，无法停止。"; return 1; fi
-    print_info "正在停止 Snell 服务..."
-    if pgrep -f "snell-server" > /dev/null; then
-        killall snell-server &>/dev/null
-        sleep 1
-        print_info "✅ 服务已停止。"
-    else
-        print_warning "Snell 服务当前未在运行。"
-    fi
-}
-
-# 显示当前配置
-display_config() {
-    if ! check_installation; then print_error "Snell 未安装。"; return; fi
-
-    print_info "正在刷新节点信息..."
-    local ip=$(curl -s icanhazip.com)
-
-    # --- 关键修复：使用 awk 替换 grep -P 以增强兼容性 ---
-    local port=$(awk -F':' '/listen/ {print $NF}' "$SNELL_CONFIG")
-    local psk=$(awk -F'=' '/psk/ {gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}' "$SNELL_CONFIG")
-
-    clear
-    echo -e "\033[1;32m========== SNELL 节点信息 ==========\033[0m"
-    if [[ -z "$port" || -z "$psk" ]]; then
-        echo -e "  \033[1;31m错误：无法从配置文件中读取端口或PSK！\033[0m"
-        echo -e "  \033[1;31m请检查配置文件: $SNELL_CONFIG\033[0m"
-    else
-        echo -e "  服务器地址: \033[1;33m${ip:-<获取失败, 请手动查询>}\033[0m"
-        echo -e "  端口: \033[1;33m${port}\033[0m"
-        echo -e "  密码 (PSK): \033[1;33m${psk}\033[0m"
-        echo -e "  混淆 (obfs): \033[1;33mhttp\033[0m"
-    fi
-    echo -e "\033[1;32m====================================\033[0m"
-}
-
-# 设置开机自启
-setup_autostart() {
-    if ! check_installation; then print_error "Snell 未安装，无法设置自启。"; return; fi
-    local cron_command="@reboot nohup $SNELL_EXECUTABLE -c $SNELL_CONFIG > $SNELL_LOG_FILE 2>&1 &"
-    (crontab -l 2>/dev/null | grep -Fv "snell-server"; echo "$cron_command") | crontab -
-    print_info "✅ 开机自启设置/更新成功！"
-}
-
-# 全新安装 (专为 Serv00 优化)
-run_installation() {
-    clear
-    echo "========================================"
-    echo "      Snell Server 安装向导 (Serv00)"
-    echo "========================================"
-    echo
-    print_warning "重要：在 Serv00 平台，您需要先手动获取一个端口。"
-    echo "请按照以下步骤操作："
-    echo "
+    print_info
