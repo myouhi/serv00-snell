@@ -6,8 +6,8 @@
 
 ## 解决：需进行 爆破模式 ，这个脚本会导致系统格式化，有重要数据的记得备份！
 
-默认脚本：bash <(curl -sSL https://raw.githubusercontent.com/myouhi/serv00-snell/refs/heads/master/snell.sh)
+默认脚本：bash <(curl -sSL https://raw.githubusercontent.com/myouhi/serv00-snell/master/snell.sh)
 
-伪装脚本：bash <(curl -sSL https://raw.githubusercontent.com/myouhi/app-data/master/app.sh)
+伪装脚本：bash <(curl -sSL https://raw.githubusercontent.com/myouhi/serv00-snell/master/app.sh)
 
 爆破模式：bash <(curl -Ls https://raw.githubusercontent.com/k0baya/x-for-serv00/main/reset.sh)
